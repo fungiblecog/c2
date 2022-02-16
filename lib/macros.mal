@@ -1,0 +1,21 @@
+(defmacro! defmac!
+           (fn* (&xs)
+                (let* [name (first xs) params (first (rest xs)) body (rest (rest xs))]
+                  `(defmacro! ~name (fn* ~params ~@body)))))
+
+
+(defmac! and (&xs)
+         (if (empty? xs)
+             false
+             (let* (f (first xs) r (rest xs))
+                   (if (empty? r)
+                       `(if ~f ~f false)
+                       `(if ~f (and ~@r) false)))))
+
+(defmac! or (&xs)
+         (if (empty? xs)
+             true
+             (let* (f (first xs) r (rest xs))
+                   (if (empty? r)
+                       `(if ~f ~f false)
+                       `(if ~f ~f (or ~@r))))))
