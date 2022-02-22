@@ -54,7 +54,8 @@ struct MalClosure_s {
   MalType *definition;
 };
 
-int cmp_chars(void *val1, void *val2);
+hash_t hash_str(void *obj);
+int cmp_str(void *val1, void *val2);
 int cmp_maltypes(void *val1, void *val2);
 List *vector_to_list(Vector *vec);
 

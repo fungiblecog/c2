@@ -10,7 +10,7 @@ Env *env_make(Env *outer, List *symbol_list, List *exprs_list, MalType *more_sym
 
   Env *env = GC_MALLOC(sizeof(*env));
   env->outer = outer;
-  env->data = hashmap_make(NULL, cmp_chars, cmp_chars);
+  env->data = hashmap_make(hash_str, cmp_str, cmp_maltypes);
 
   while (symbol_list) {
 

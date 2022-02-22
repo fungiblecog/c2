@@ -5,15 +5,15 @@
 
 (def! N 28)
 
-(def! fib (memoize fib))
-
 ;; Benchmark naive 'fib'
 
 (def! r1 (fib N))                       ; Should be slow
 
-;; Benchmark memoized 'fib'
 
-(def! r2 (fib N))                       ; Should be quick
+(def! fib (memoize fib))
+
+
+;; Benchmark memoized 'fib'
 
 (def! r2 (fib N))                       ; Should be quick
 

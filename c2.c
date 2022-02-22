@@ -917,7 +917,7 @@ MalType *regularise_parameters(List **args, MalType **more_symbol) {
     /* & is not found - add the symbol to the regular argument list */
     else {
 
-      if (list_find(regular_args, val->value.mal_symbol, cmp_chars) > 0) {
+      if (list_find(regular_args, val->value.mal_symbol, cmp_str) > 0) {
         return make_error_fmt("duplicate symbol in argument list: '%s'", \
                               pr_str(val, UNREADABLY));
       }

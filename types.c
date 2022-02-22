@@ -284,8 +284,20 @@ MalType *copy_type(MalType *value) {
   return new_val;
 }
 
+/*  hash function for char* */
+hash_t hash_str(void *obj)
+{
+  hash_t hash = 5381;
+
+  int c;
+  while ((c = *(char*)obj++)) {
+    hash = ((hash << 5) + hash) + c;
+  }
+  return hash;
+}
+
 /* comparison function for char* */
-int cmp_chars(void *val1, void *val2) {
+int cmp_str(void *val1, void *val2) {
   return (strcmp((char *)val1, (char *)val2) == 0);
 }
 
