@@ -4,7 +4,7 @@
 #include <gc.h>
 #include "types.h"
 
-#define ERROR_BUFFER_SIZE 128
+#define ERROR_BUFFER_SIZE 256
 
 MalType THE_TRUE = {MALTYPE_TRUE, 0, 0, {0}};
 MalType THE_FALSE = {MALTYPE_FALSE, 0, 0, {0}};
@@ -246,7 +246,7 @@ MalType *make_error_fmt(char *fmt, ...) {
   va_list argptr;
   va_start(argptr, fmt);
 
-  char *buffer = GC_MALLOC(sizeof(*buffer) * ERROR_BUFFER_SIZE);
+  char *buffer = GC_MALLOC(sizeof(*buffer) * ERROR_BUFFER_SIZE + 1);
 
   long n = vsnprintf(buffer, ERROR_BUFFER_SIZE, fmt, argptr);
   va_end(argptr);
@@ -254,7 +254,7 @@ MalType *make_error_fmt(char *fmt, ...) {
   if (n > ERROR_BUFFER_SIZE) {
     va_start(argptr, fmt);
 
-    buffer = GC_REALLOC(buffer, sizeof(*buffer) * n);
+    buffer = GC_REALLOC(buffer, sizeof(*buffer) * n + 1);
     vsnprintf(buffer, n, fmt, argptr);
 
     va_end(argptr);

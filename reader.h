@@ -18,7 +18,7 @@ typedef struct {
 } Reader;
 
 /* reader object */
-Reader *reader_make(long token_capacity);
+Reader *reader_make();
 Reader *reader_append(Reader *reader, Token *token);
 Token *reader_peek(const Reader *reader);
 Token *reader_next(Reader *reader);

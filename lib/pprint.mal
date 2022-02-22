@@ -21,9 +21,9 @@
              kindent (+ 1 indent)
              kwidth (count (seq (str (first ks))))
              vindent (+ 1 (+ kwidth kindent))]
-        (apply str (pp- (first ks) 0)
+        (apply str (pp- (first ks) kindent)
                    " "
-                   (pp- (get obj (first ks)) 0)
+                   (pp- (get obj (first ks)) vindent)
                    (map (fn* [k] (str "\n" (spaces- kindent)
                                       (pp- k kindent)
                                       " "

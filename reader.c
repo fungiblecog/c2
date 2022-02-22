@@ -6,6 +6,8 @@
 
 #include "reader.h"
 
+#define INITIAL_TOKEN_CAPACITY 128
+
 #define TOKEN_SPECIAL_CHARACTER 1
 #define TOKEN_STRING 2
 #define TOKEN_INTEGER 3
@@ -27,14 +29,14 @@
 #define SYMBOL_DEREF "deref"
 #define SYMBOL_WITH_META "with-meta"
 
-Reader *reader_make(long token_capacity) {
+Reader *reader_make() {
 
   Reader *reader = GC_MALLOC(sizeof(*reader));
 
-  reader->max_tokens = token_capacity;
+  reader->max_tokens = INITIAL_TOKEN_CAPACITY;
   reader->position = 0;
   reader->token_count = 0;
-  reader->token_data = GC_MALLOC(sizeof(Token*) * token_capacity);
+  reader->token_data = GC_MALLOC(sizeof(Token*) * reader->max_tokens);
   reader->error = NULL;
 
   return reader;
@@ -48,9 +50,8 @@ Reader *reader_append(Reader *reader, Token *token) {
     reader->token_count++;
   }
   else {
-    /* TODO: expand the storage more intelligently */
     reader->max_tokens *= 2;
-    reader = GC_REALLOC(reader, sizeof(*reader) * reader->max_tokens);
+    reader->token_data = GC_REALLOC(reader->token_data, sizeof(Token*) * reader->max_tokens);
     reader->token_data[reader->token_count] = token;
     reader->token_count++;
   }
@@ -141,9 +142,7 @@ MalType *read_str(char *token_string) {
 
 Reader *tokenize(char *token_string) {
 
-  /* allocate enough space for a Reader */
-  /* TODO: over-allocates space */
-  Reader *reader = reader_make(strlen(token_string));
+  Reader *reader = reader_make();
 
   for (char *next = token_string; *next != '\0';) {
 
@@ -288,7 +287,6 @@ char *read_symbol_token (char *current, Token **ptoken) {
   /* TODO: check for invalid characters */
   return next;
 }
-
 
 char *read_keyword_token (char *current, Token **ptoken) {
 
@@ -460,7 +458,8 @@ MalType *read_form(Reader *reader) {
 
       default:
         /* shouldn't happen */
-        return make_error_fmt("Reader error: Unknown special character '%c'", tok->data[0]);
+        return make_error_fmt("Reader error: Unexpected special character '%c'", \
+                              tok->data[0]);
       }
 
     } else {
@@ -479,12 +478,13 @@ MalType *read_list(Reader *reader) {
   Token *tok = reader_next(reader);
   List *lst = NULL;
 
-  if (reader_peek(reader)->data[0] == ')') {
+  Token* peek = reader_peek(reader);
+  if (peek->type == TOKEN_SPECIAL_CHARACTER && peek->data[0] == ')') {
     reader_next(reader);
     return make_list(NULL);
   }
   else {
-    while (tok->data[0] != ')') {
+    while (!(tok->type == TOKEN_SPECIAL_CHARACTER && tok->data[0] == ')')) {
 
         MalType *val = read_form(reader);
         lst = list_cons(lst, (void *)val);
@@ -495,6 +495,7 @@ MalType *read_list(Reader *reader) {
           return make_error("Reader error: unbalanced parentheses '()'");
         }
       }
+
     reader_next(reader);
 
     return make_list(list_reverse(lst));
@@ -506,20 +507,24 @@ MalType *read_vector(Reader *reader) {
   Token *tok = reader_next(reader);
   Vector *vec = vector_make();
 
-  if (reader_peek(reader)->data[0] == ']') {
+  Token* peek = reader_peek(reader);
+  if (peek->type == TOKEN_SPECIAL_CHARACTER && peek->data[0] == ']') {
     reader_next(reader);
     return make_vector(vec);
   }
   else {
-    while (tok->data[0] != ']') {
+    while (!(tok->type == TOKEN_SPECIAL_CHARACTER && tok->data[0] == ']')) {
 
       MalType *val = read_form(reader);
-      vec = vector_push(vec, (void *)val);
 
+      if (is_error(val)) {
+        return make_error_fmt("Reader error: %s", val->value.mal_error);
+      }
+
+      vec = vector_push(vec, (void *)val);
       tok = reader_peek(reader);
 
       if (!tok) {
-
         return make_error("Reader error: unbalanced brackets '[]'");
       }
     }
@@ -533,12 +538,13 @@ MalType *read_hashmap(Reader *reader) {
   Token *tok = reader_next(reader);
   Hashmap *map = hashmap_make(NULL, cmp_maltypes, cmp_maltypes);
 
-  if (reader_peek(reader)->data[0] == '}') {
+  Token* peek = reader_peek(reader);
+  if (peek->type == TOKEN_SPECIAL_CHARACTER && peek->data[0] == '}') {
     reader_next(reader);
     return make_hashmap(map);
   }
   else {
-    while (tok->data[0] != '}') {
+    while (!(tok->type == TOKEN_SPECIAL_CHARACTER && tok->data[0] == '}')) {
 
       MalType *key = read_form(reader);
       tok = reader_peek(reader);

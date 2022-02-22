@@ -28,6 +28,9 @@
 #define SYMBOL_MACROEXPAND "macroexpand"
 #define SYMBOL_TRYSTAR "try*"
 #define SYMBOL_CATCHSTAR "catch*"
+#define SYMBOL_VEC "vec"
+#define SYMBOL_CONCAT "concat"
+#define SYMBOL_CONS "cons"
 
 #define PROMPT_STRING "c2> "
 
@@ -263,6 +266,7 @@ int main(int argc, char **argv) {
   if (argc > 1) {
 
     /* first argument on command line is filename */
+    /* TODO: get rid of magic number */
     char *load_command = snprintfbuf(1024, "(load-file \"%s\")", argv[1]);
     EVAL(READ(load_command), repl_env);
   }
@@ -577,7 +581,7 @@ MalType *quasiquote(MalType *ast) {
   else {
 
     List *lst = list_make(ast);
-    lst = list_cons(lst, make_symbol("quote"));
+    lst = list_cons(lst, make_symbol(SYMBOL_QUOTE));
     return make_list(lst);
   }
 }
@@ -595,7 +599,7 @@ MalType *quasiquote_vector(MalType *ast) {
     if (is_symbol(first) && strcmp(first->value.mal_symbol, SYMBOL_UNQUOTE) == 0) {
 
       List *lst = list_make(ast);
-      lst = list_cons(lst, make_symbol("quote"));
+      lst = list_cons(lst, make_symbol(SYMBOL_QUOTE));
 
       return make_list(lst);
     }
@@ -606,7 +610,7 @@ MalType *quasiquote_vector(MalType *ast) {
 
   if (is_error(val)) { return val; }
 
-  List *result = list_make(make_symbol("vec"));
+  List *result = list_make(make_symbol(SYMBOL_VEC));
   result = list_reverse(list_cons(result, val));
 
   return make_list(result);
@@ -649,7 +653,7 @@ MalType *quasiquote_list(MalType *ast) {
     }
 
     MalType *first_second = first->value.mal_list->next->data;
-    List *lst = list_make(make_symbol("concat"));
+    List *lst = list_make(make_symbol(SYMBOL_CONCAT));
     lst = list_cons(lst, first_second);
 
     MalType *rest = quasiquote(make_list(args->next));
@@ -666,7 +670,7 @@ MalType *quasiquote_list(MalType *ast) {
      => (cons (quasiquote first) (quasiquote rest)) */
   else {
 
-    List *lst = list_make(make_symbol("cons"));
+    List *lst = list_make(make_symbol(SYMBOL_CONS));
 
     MalType *first = quasiquote(args->data);
     if (is_error(first)) {
@@ -958,13 +962,14 @@ MalType *apply(MalType *fn, List *args) {
 }
 
 int is_macro_call(MalType *ast, Env *env) {
+  /* (<a_macro_fn> <a_macro_arg> ...) */
 
   /* not a list */
   if (!is_list(ast)) {
     return 0;
   }
 
-  /* empty list */
+  /* not an empty list */
   List *lst = ast->value.mal_list;
   if (!lst) {
     return 0;
@@ -976,11 +981,12 @@ int is_macro_call(MalType *ast, Env *env) {
     return 0;
   }
 
-  /* lookup symbol */
+  /* symbol doesn't exist */
   MalType *val = env_get(env, first);
   if (is_error(val)) {
     return 0;
   }
+  /* symbol's value is/isn't a macro fn */
   else {
     return (val->is_macro);
   }

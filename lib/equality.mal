@@ -15,6 +15,7 @@
     (if (empty? xs)
       true
       `(if ~(first xs) (bool-and ~@(rest xs)) false))))
+
 (defmacro! bool-or                     ; boolean
   (fn* [& xs]                          ; interpreted as logical values
     (if (empty? xs)
@@ -66,7 +67,7 @@
     (try*
       (bool-and (= [:a :b] (list :a :b))
                 (not (= [:a :b] [:a :b :c])))
-      (catch* _ false))))
+      (catch* e false))))
 
 ;; If the native `=` implementation doesn't support sequences or hash-maps
 ;; correctly, replace it with the pure mal implementation

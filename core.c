@@ -931,12 +931,14 @@ MalType *mal_slurp(List *args) {
   fseek(file, 0, SEEK_SET);
 
   char *buffer = (char *)GC_MALLOC(sizeof(*buffer) * file_length + 1);
-  if (file_length != fread(buffer, sizeof(*buffer), file_length, file)) {
+  fread(buffer, sizeof(char), file_length, file);
+
+  if (ferror(file)) {
+    fclose(file);
     return make_error_fmt("'slurp': failed to read file '%s'", pr_str(filename, UNREADABLY));
   }
 
   fclose(file);
-
   buffer[file_length] = '\0';
   return make_string(buffer);
 }
@@ -1726,7 +1728,7 @@ MalType *as_str(List *args, int readably, char *separator) {
 
   long buffer_length = STRING_BUFFER_SIZE;
   long separator_length = strlen(separator);
-  char *buffer = GC_MALLOC(sizeof(*buffer) * STRING_BUFFER_SIZE);
+  char *buffer = GC_MALLOC(sizeof(*buffer) * STRING_BUFFER_SIZE + 1);
   long char_count = 0;
 
   while (args) {

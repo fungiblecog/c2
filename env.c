@@ -29,36 +29,23 @@ Env *env_make(Env *outer, List *symbol_list, List *exprs_list, MalType *more_sym
 
 Env *env_set(Env *current, MalType *symbol, MalType *value) {
 
-  current->data = hashmap_dissoc(current->data, symbol->value.mal_symbol);
   current->data = hashmap_assoc(current->data, symbol->value.mal_symbol, value);
   return current;
 }
 
-Env *env_find(Env *current, MalType *symbol) {
+MalType *env_get(Env *current, MalType *symbol) {
 
   MalType *val = hashmap_get(current->data, symbol->value.mal_symbol);
 
-  if (val) {
-    return current;
+  if(val) {
+    return val;
   }
   else if (current->outer) {
-    return env_find(current->outer, symbol);
+    return env_get(current->outer, symbol);
   }
   else {
-    /* not found */
-    return NULL;
-  }
-}
-
-MalType *env_get(Env *current, MalType *symbol) {
-
-  Env *env = env_find(current, symbol);
-
-  if (env) {
-    return hashmap_get(env->data, symbol->value.mal_symbol);
-  }
-  else {
-    return make_error_fmt("'%s' not found", symbol->value.mal_symbol);
+      return make_error_fmt("symbol '%s' not found in environment",
+                            symbol->value.mal_symbol);
   }
 }
 
