@@ -7,6 +7,7 @@
 #include "compiler.h"
 
 #define INITIAL_FUNCTION_SIZE 8192
+#define GENSYM_SIZE 16
 #define STRINGIFY(...) #__VA_ARGS__
 
 /* TODO: put these in a shared header file */
@@ -45,16 +46,68 @@ MalType *compile_integer(MalType *expr, Env *env, int ret);
 MalType *compile_string(MalType *expr, Env *env, int ret);
 MalType *compile_symbol(MalType *expr, Env *env, int ret);
 
+/* the global environment */
 extern Env *global_env;
 
-Env *get_global_env() {
+Env *get_global_env()
+{
   return global_env;
 }
 
-/* compiles a closure fn to machine code via libtcc */
-MalType *compile(MalType *fn) {
+/* return a unique identifier */
+char *gensym(char *prefix)
+{
 
-  /* compiler needs to create a function implementing closure as a string */
+  static int i = 0;
+  char *result = GC_MALLOC(sizeof(*result) * GENSYM_SIZE);
+
+  if (prefix) {
+    snprintf(result, GENSYM_SIZE, "%s_%i", prefix, i);
+  } else {
+    snprintf(result, GENSYM_SIZE, "G_%i", i);
+  }
+  return result;
+}
+
+/* a hashmap to store environments needed for compilation */
+Hashmap *compilation_envs;
+
+/* environments are the same if they point to the same one */
+int cmp_envs(void *val1, void *val2)
+{
+  return (val1 == val2);
+}
+
+/* make a hashmap to store environments */
+Hashmap *make_compilation_envs()
+{
+  return hashmap_make(hash_str, cmp_str, cmp_envs);
+}
+
+/* save a compilation environment under a gensym'd name */
+char *save_env(Env *env)
+{
+  char *name = gensym(NULL);
+  compilation_envs = hashmap_assoc(compilation_envs, name, env);
+
+  return name;
+}
+
+/* get a compilation environment by name */
+Env *get_env(char *name)
+{
+  return hashmap_get(compilation_envs, name);
+}
+
+/* compiles a closure fn to machine code via C using libtcc */
+MalType *compile(MalType *fn)
+{
+  if (!compilation_envs) {
+    compilation_envs = make_compilation_envs();
+  }
+
+  /* compiler needs to create a function to
+     implement the closure as a string of C code*/
   MalType *program_string = compile_closure(fn->value.mal_closure);
   if (is_error(program_string)) { return program_string;}
 
@@ -64,14 +117,14 @@ MalType *compile(MalType *fn) {
   TCCState *s = tcc_new();
 
   if (!s) {
-    return make_error("Compiler could not create compilation state");
+    return make_error("could not create compilation state");
   }
 
   /* MUST BE CALLED before any compilation */
   tcc_set_output_type(s, TCC_OUTPUT_MEMORY);
 
   if (tcc_compile_string(s, program) == -1) {
-    return make_error("Compiler could not compile function");
+    return make_error("could not compile function");
   }
 
   /* add symbols that the compiled program can use */
@@ -109,13 +162,13 @@ MalType *compile(MalType *fn) {
   /* get the size of the generated code */
   int size = tcc_relocate(s, NULL);
   if (size == -1) {
-    return make_error("Compiler could not relocate compiled function");
+    return make_error("could not relocate compiled function");
   }
 
   /* allocate memory and copy the code into it */
   void *mem = GC_MALLOC(size);
   if (tcc_relocate(s, mem) < 0) {
-    return make_error("Compiler could not relocate code");
+    return make_error("could not relocate compiled function");
   }
 
   /* function signature */
@@ -124,7 +177,7 @@ MalType *compile(MalType *fn) {
   /* get the compiled function */
   closure_func = tcc_get_symbol(s, "closure_func");
   if (!closure_func) {
-    return make_error("Compiler could not get function symbol");
+    return make_error("could not get function symbol");
   }
 
   /* delete the state */
@@ -134,8 +187,8 @@ MalType *compile(MalType *fn) {
   return make_function(closure_func);
 }
 
-MalType *compile_closure(MalClosure *closure) {
-
+MalType *compile_closure(MalClosure *closure)
+{
   /* extract closure components */
   MalType *definition = closure->definition;
   Env *env = closure->env;
@@ -186,8 +239,8 @@ MalType *compile_closure(MalClosure *closure) {
   return make_string(code);
 }
 
-MalType *compile_expression(MalType *expr, Env *env, int ret) {
-
+MalType *compile_expression(MalType *expr, Env *env, int ret)
+{
   MalType *buffer;
 
   if (is_list(expr)) {
@@ -369,8 +422,8 @@ MalType *compile_symbol(MalType *expr, Env *env, int ret)
   return make_string(code);
 }
 
-MalType *compile_nil(MalType *expr, Env *env, int ret) {
-
+MalType *compile_nil(MalType *expr, Env *env, int ret)
+{
   if (ret) {
     /* assigns 'nil' to the variable 'result' */
     return make_string("result = make_nil();");
@@ -381,8 +434,8 @@ MalType *compile_nil(MalType *expr, Env *env, int ret) {
   }
 }
 
-MalType *compile_true(MalType *expr, Env *env, int ret) {
-
+MalType *compile_true(MalType *expr, Env *env, int ret)
+{
   if (ret) {
     /* assigns 'trure' to the variable 'result' */
     return make_string("result = make_true();");
@@ -393,8 +446,8 @@ MalType *compile_true(MalType *expr, Env *env, int ret) {
   }
 }
 
-MalType *compile_false(MalType *expr, Env *env, int ret) {
-
+MalType *compile_false(MalType *expr, Env *env, int ret)
+{
   if (ret) {
     /* assigns 'false' to the variable 'result' */
     return make_string("result = make_false();");
@@ -405,8 +458,8 @@ MalType *compile_false(MalType *expr, Env *env, int ret) {
   }
 }
 
-MalType *compile_integer(MalType *expr, Env *env, int ret) {
-
+MalType *compile_integer(MalType *expr, Env *env, int ret)
+{
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
   if (ret) {
     /* assigns the integer to the variable 'result' */
