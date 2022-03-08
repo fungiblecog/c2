@@ -70,7 +70,7 @@ MalType *EVAL(MalType *ast, Env *env) {
   if (!is_list(ast)) { return eval_ast(ast, env); }
 
   /* empty list */
-  if (ast->value.mal_list == NULL) { return ast; }
+  if (!ast->value.mal_list) { return ast; }
 
   /* list */
   MalType *first = (ast->value.mal_list)->data;
@@ -253,6 +253,7 @@ int main(int argc, char **argv) {
   EVAL(READ("(def! not (fn* (a) (if a false true)))"), repl_env);
   EVAL(READ("(def! load-file (fn* (f) (eval (read-string (str \"(do \"\n (slurp f) \n\"\nnil)\")))))"), repl_env);
   EVAL(READ("(defmacro! cond (fn* (& xs) (if (> (count xs) 0) (list 'if (first xs) (if (> (count xs) 1) (nth xs 1) (throw \"odd number of forms to cond\")) (cons 'cond (rest (rest xs)))))))"), repl_env);
+
 
   /* make command line arguments available in the environment */
   List *lst = NULL;

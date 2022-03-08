@@ -2,10 +2,10 @@ CC = gcc
 
 CFLAGS = -std=c99 -g -Wall
 
-LIBS = -ledit -lgc
+LIBS = -ledit -lgc -ltcc
 FFI_LIBS = -ldl -lffi
 
-SRC = reader.c printer.c types.c env.c core.c
+SRC = reader.c printer.c types.c env.c core.c compiler.c
 HEADERS = reader.h printer.h types.h env.h core.h
 
 LIB_DIR = ./libs

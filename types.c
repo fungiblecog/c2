@@ -45,7 +45,7 @@ inline int is_integer(MalType *val) {
   return (val->type == MALTYPE_INTEGER);
 }
 
-inline int is_float(MalType *val) {
+inline int is_floating(MalType *val) {
   return (val->type == MALTYPE_FLOAT);
 }
 

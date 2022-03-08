@@ -87,7 +87,7 @@ int is_hashmap(MalType *val);
 int is_nil(MalType *val);
 int is_string(MalType *val);
 int is_integer(MalType *val);
-int is_float(MalType *val);
+int is_floating(MalType *val);
 int is_number(MalType *val);
 int is_true(MalType *val);
 int is_false(MalType *val);

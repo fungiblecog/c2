@@ -16,5 +16,4 @@ Env *env_make(Env *outer, List *binds, List *exprs, MalType *more_symbol);
 Env *env_set(Env *current, MalType *symbol, MalType *value);
 Env *env_set_C_fn(Env *current, char *symbol_name, mal_fn fn);
 MalType *env_get(Env *current, MalType *symbol);
-Env *env_find(Env *current, MalType *symbol);
 #endif
