@@ -5,6 +5,15 @@
 #include "env.h"
 #include "reader.h"
 
+Env *env_new(Env *outer) {
+
+  Env *env = GC_MALLOC(sizeof(*env));
+  env->outer = outer;
+  env->data = hashmap_make(hash_str, cmp_str, cmp_maltypes);
+
+  return env;
+}
+
 /* Note: caller must make sure enough exprs to match symbols */
 Env *env_make(Env *outer, List *symbol_list, List *exprs_list, MalType *more_symbol) {
 

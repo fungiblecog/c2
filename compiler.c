@@ -57,14 +57,13 @@ Env *get_global_env()
 /* return a unique identifier */
 char *gensym(char *prefix)
 {
-
   static int i = 0;
   char *result = GC_MALLOC(sizeof(*result) * GENSYM_SIZE);
 
   if (prefix) {
-    snprintf(result, GENSYM_SIZE, "%s_%i", prefix, i);
+    snprintf(result, GENSYM_SIZE, "%s_%i", prefix, i++);
   } else {
-    snprintf(result, GENSYM_SIZE, "G_%i", i);
+    snprintf(result, GENSYM_SIZE, "G_%i", i++);
   }
   return result;
 }
@@ -87,7 +86,7 @@ Hashmap *make_compilation_envs()
 /* save a compilation environment under a gensym'd name */
 char *save_env(Env *env)
 {
-  char *name = gensym(NULL);
+  char *name = gensym("GENV");
   compilation_envs = hashmap_assoc(compilation_envs, name, env);
 
   return name;
@@ -155,7 +154,8 @@ MalType *compile(MalType *fn)
   tcc_add_symbol(s, "list_reverse", list_reverse);
   tcc_add_symbol(s, "list_count", list_count);
 
-  tcc_add_symbol(s, "get_global_env", get_global_env);
+  //tcc_add_symbol(s, "get_global_env", get_global_env);
+  tcc_add_symbol(s, "get_env", get_env);
 
   //  tcc_add_symbol(s, "mal_", mal_);
 
@@ -189,52 +189,37 @@ MalType *compile(MalType *fn)
 
 MalType *compile_closure(MalClosure *closure)
 {
-  /* extract closure components */
-  MalType *definition = closure->definition;
-  Env *env = closure->env;
-  MalType *parameters = closure->parameters;
-  //MalType *more = closure->more_symbol;
-
-  MalType *prog = compile_expression(definition, env, 0);
-
+  MalType *prog = compile_expression(closure->definition, closure->env, 1);
   if (is_error(prog)) { return prog; }
 
-  List *lst = parameters->value.mal_list;
+  /* create a new environment holding the parameter list */
+  Env *env = env_new(closure->env);
+  env = env_set(env, make_symbol("params"), closure->parameters);
 
-  /* create definitions for the arguments */
-  char *param_i = GC_MALLOC(sizeof(*param_i) * INITIAL_FUNCTION_SIZE);
-  char *params = GC_MALLOC(sizeof(*params) * INITIAL_FUNCTION_SIZE);
+  /* stash the environment where the compiled function can get it */
+  char *name = save_env(env);
 
-  while (lst) {
-    MalType *p = lst->data;
-    snprintf(param_i, INITIAL_FUNCTION_SIZE,
-             "params = list_cons(params, make_symbol(\"%s\"));\n",
-             p->value.mal_symbol);
-    strcat(params, param_i);
-    lst = lst->next;
-  }
-
+  /* generate the C code for the closure */
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
   snprintf(code, INITIAL_FUNCTION_SIZE,
            "#include <stddef.h>\n"
            "#include \"types.h\"\n"
            "#include \"env.h\"\n"
            "#include \"core.h\"\n"
-           "Env *get_global_env();\n"
+           "Env *get_env(char* name);\n"
+           "\n"
            "MalType *closure_func(List *args) {\n"
            "MalType *result;\n"
-           "List *params = NULL;\n"
-           "%s"
-           "params = list_reverse(params);\n"
-           "Env *global_env = get_global_env();\n"
-           "int param_count = list_count(params);"
+           "Env *env = get_env(\"%s\");\n"
+           "MalType *params = env_get(env, make_symbol(\"params\"));\n"
+           "int param_count = list_count(params->value.mal_list);\n"
            "if (list_count(args) != param_count) {\n"
            "return make_error_fmt(\"Error: expected \%%i argument\%%s\","
-           "param_count, (param_count == 1) ? \"\" : \"s\");}"
-           "Env *closure_env = env_make(global_env, params, args, NULL);\n"
+           "param_count, (param_count == 1) ? \"\" : \"s\");}\n"
+           "Env *closure_env = env_make(env, params->value.mal_list, args, NULL);\n"
            "%s"
            "return result;\n}\n",
-           params, prog->value.mal_string);
+           name, prog->value.mal_string);
 
   return make_string(code);
 }
@@ -273,25 +258,25 @@ MalType *compile_expression(MalType *expr, Env *env, int ret)
     }
   }
   else if (is_nil(expr)) {
-      buffer = compile_nil(expr, env, 0);
+      buffer = compile_nil(expr, env, ret);
   }
   else if (is_true(expr)) {
-      buffer = compile_true(expr, env, 0);
+      buffer = compile_true(expr, env, ret);
   }
   else if (is_false(expr)) {
-      buffer = compile_false(expr, env, 0);
+      buffer = compile_false(expr, env, ret);
   }
   else if (is_integer(expr)) {
 
-    buffer = compile_integer(expr, env, 0);
+    buffer = compile_integer(expr, env, ret);
   }
   else if (is_string(expr)) {
 
-    buffer = compile_string(expr, env, 0);
+    buffer = compile_string(expr, env, ret);
     }
   else if (is_symbol(expr)) {
 
-    buffer = compile_symbol(expr, env, 0);
+    buffer = compile_symbol(expr, env, ret);
   }
   else {
     return make_error("Compiler error: Unknown atom");
@@ -310,38 +295,44 @@ MalType *compile_application(MalType *expr, Env *env, int ret)
   /* compile the arguments */
   List *comp_lst = NULL;
   while (lst) {
-    MalType *arg_n = compile_expression(lst->data, env, 0);
+    MalType *arg_n = compile_expression(lst->data, env, 1);
     comp_lst = list_cons(comp_lst, arg_n);
     lst = lst->next;
   }
   comp_lst = list_reverse(comp_lst);
 
+  /* create a new environment holding the compiled arg list */
+  //env = env_set(env, make_symbol("args"), make_list(comp_lst));
+
   /* create definitions for the arguments */
   char *def_i = GC_MALLOC(sizeof(*def_i) * INITIAL_FUNCTION_SIZE);
   char *defs = GC_MALLOC(sizeof(*defs) * INITIAL_FUNCTION_SIZE);
 
+  char *list_name = gensym("arg_vals");
   while (comp_lst) {
     MalType *arg = comp_lst->data;
-    snprintf(def_i, INITIAL_FUNCTION_SIZE,
-             "arg_vals = list_cons(arg_vals, %s);\n",
-             arg->value.mal_string);
+        snprintf(def_i, INITIAL_FUNCTION_SIZE,
+             "%s"
+             "%s = list_cons(%s, result);\n",
+             arg->value.mal_string, list_name, list_name);
     strcat(defs, def_i);
     comp_lst = comp_lst->next;
   }
 
+  char *fn_name = gensym("fn");
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
   snprintf(code, INITIAL_FUNCTION_SIZE,
            "/* compile application - start */\n"
-           "result = make_nil();\n"
-           "MalType *fn = env_get(closure_env, make_symbol(\"%s\"));\n"
-           "if (is_error(fn)) { return fn; }\n"
-           "List *arg_vals = NULL;\n"
+           "MalType *%s = env_get(closure_env, make_symbol(\"%s\"));\n"
+           "if (is_error(%s)) { return %s; }\n"
            "/* arg definitions - start */\n"
+           "List *%s = NULL;\n"
            "%s"
-           "arg_vals = list_reverse(arg_vals);\n"
+           "%s = list_reverse(%s);\n"
            "/* arg definitions - end */\n"
-           "result = (*fn->value.mal_function)(arg_vals);\n",
-           fn->value.mal_symbol, defs);
+           "result = (%s->value.mal_function)(%s);\n",
+           fn_name, fn->value.mal_symbol, fn_name, fn_name,
+           list_name, defs, list_name, list_name, fn_name, list_name);
 
   return make_string(code);
 }
@@ -361,38 +352,38 @@ MalType *compile_if(MalType *expr, Env *env)
   List *lst = expr->value.mal_list;
 
   /* compile the condition expression */
-  MalType *condition = compile_expression(lst->next->data, env, 0);
+  MalType *condition = compile_expression(lst->next->data, env, 1);
   if (is_error(condition)) { return condition; }
 
   /* compile the 'true' branch */
-  MalType *true_branch = compile_expression(lst->next->next->data, env, 0);
+  MalType *true_branch = compile_expression(lst->next->next->data, env, 1);
   if (is_error(true_branch)) { return true_branch; }
 
   /* compile the (optional) 'false' branch */
   MalType *false_branch = NULL;
   if (lst->next->next->next) {
-    false_branch = compile_expression(lst->next->next->next->data, env, 0);
+    false_branch = compile_expression(lst->next->next->next->data, env, 1);
     if (is_error(false_branch)) { return false_branch; }
   }
 
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
   snprintf(code, INITIAL_FUNCTION_SIZE,
            "/* if condition - start */\n"
-           "%s\n"
+           "%s"
            "MalType *cond = result;\n"
            "/* if condition - end */\n"
            "    if (!is_false(cond) && !is_nil(cond)) {\n"
            "/* if true branch - start */\n"
-           "       result = %s;"
+           "       %s;\n"
            "/* if true branch - end */\n"
            "/* if false branch - start */\n"
            "    } else {\n"
-           "       result = %s;"
+           "       %s;\n"
            "/* if false branch - end */\n"
            "    }\n",
            condition->value.mal_string,
            true_branch->value.mal_string,
-           !false_branch ? "make_nil()" : false_branch->value.mal_string);
+           !false_branch ? "result = make_nil()" : false_branch->value.mal_string);
 
   return make_string(code);
 }
