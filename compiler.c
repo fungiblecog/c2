@@ -289,6 +289,22 @@ MalType *compile_expression(MalType *expr, Env *env, int ret)
   return buffer;
 }
 
+List *compile_list(List *lst, Env *env, int ret) {
+
+  List *compiled_lst = NULL;
+  while (lst) {
+    MalType *expr = compile_expression(lst->data, env, 1);
+    compiled_lst = list_cons(compiled_lst, expr);
+    lst = lst->next;
+  }
+  return list_reverse(compiled_lst);
+}
+
+MalType *compile_defbang(MalType *expr, Env *env)
+{
+  return make_error("Compiler: 'def!' not implemented");
+}
+
 MalType *compile_application(MalType *expr, Env *env, int ret)
 {
   List *lst = expr->value.mal_list;
@@ -297,14 +313,8 @@ MalType *compile_application(MalType *expr, Env *env, int ret)
   /* advance to the first argument */
   if (lst->next) { lst = lst->next; }
 
-  /* compile the arguments */
-  List *comp_lst = NULL;
-  while (lst) {
-    MalType *arg_n = compile_expression(lst->data, env, 1);
-    comp_lst = list_cons(comp_lst, arg_n);
-    lst = lst->next;
-  }
-  comp_lst = list_reverse(comp_lst);
+  /* compile the list of arguments */
+  List *comp_lst = compile_list(lst, env, 1);
 
   /* create definitions for the arguments */
   char *def_i = GC_MALLOC(sizeof(*def_i) * INITIAL_FUNCTION_SIZE);
@@ -345,9 +355,35 @@ MalType *compile_application(MalType *expr, Env *env, int ret)
   return make_string(code);
 }
 
-MalType *compile_defbang(MalType *expr, Env *env)
+MalType *compile_do(MalType *expr, Env *env)
 {
-  return make_error("Compiler: 'def!' not implemented");
+  List *lst = expr->value.mal_list;
+
+  /* advance to the first expression */
+  if (lst->next) { lst = lst->next; }
+
+  /* compile the expressions */
+  List *exp_lst = compile_list(lst, env, 1);
+
+  /* sequence the compiled expressions */
+  char *exp_i = GC_MALLOC(sizeof(*exp_i) * INITIAL_FUNCTION_SIZE);
+  char *exps = GC_MALLOC(sizeof(*exps) * INITIAL_FUNCTION_SIZE);
+
+  while (exp_lst) {
+    MalType *exp = exp_lst->data;
+    snprintf(exp_i, INITIAL_FUNCTION_SIZE, "%s", exp->value.mal_string);
+    strcat(exps, exp_i);
+    exp_lst = exp_lst->next;
+  }
+
+  char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
+  snprintf(code, INITIAL_FUNCTION_SIZE,
+           "/* do - start */\n"
+           "%s"
+           "/* do - end */\n",
+           exps);
+
+    return make_string(code);
 }
 
 MalType *compile_letstar(MalType *expr, Env *env)
@@ -396,42 +432,7 @@ MalType *compile_if(MalType *expr, Env *env)
   return make_string(code);
 }
 
-MalType *compile_do(MalType *expr, Env *env)
-{
-  List *lst = expr->value.mal_list;
-
-  /* advance to the first expression */
-  if (lst->next) { lst = lst->next; }
-
-  /* compile the expressions */
-  List *exp_lst = NULL;
-  while (lst) {
-    MalType *exp_n = compile_expression(lst->data, env, 1);
-    exp_lst = list_cons(exp_lst, exp_n);
-    lst = lst->next;
-  }
-  exp_lst = list_reverse(exp_lst);
-
-  /* sequence the compiled expressions */
-  char *exp_i = GC_MALLOC(sizeof(*exp_i) * INITIAL_FUNCTION_SIZE);
-  char *exps = GC_MALLOC(sizeof(*exps) * INITIAL_FUNCTION_SIZE);
-
-  while (exp_lst) {
-    MalType *exp = exp_lst->data;
-    snprintf(exp_i, INITIAL_FUNCTION_SIZE, "%s", exp->value.mal_string);
-    strcat(exps, exp_i);
-    exp_lst = exp_lst->next;
-  }
-
-  char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
-  snprintf(code, INITIAL_FUNCTION_SIZE,
-           "/* do - start */\n"
-           "%s"
-           "/* do - end */\n",
-           exps);
-
-    return make_string(code);
-}
+/* compilation primitives */
 
 MalType *compile_symbol(MalType *expr, Env *env, int ret)
 {
