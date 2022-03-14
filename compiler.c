@@ -306,9 +306,6 @@ MalType *compile_application(MalType *expr, Env *env, int ret)
   }
   comp_lst = list_reverse(comp_lst);
 
-  /* create a new environment holding the compiled arg list */
-  //env = env_set(env, make_symbol("args"), make_list(comp_lst));
-
   /* create definitions for the arguments */
   char *def_i = GC_MALLOC(sizeof(*def_i) * INITIAL_FUNCTION_SIZE);
   char *defs = GC_MALLOC(sizeof(*defs) * INITIAL_FUNCTION_SIZE);
@@ -327,7 +324,7 @@ MalType *compile_application(MalType *expr, Env *env, int ret)
   char *fn_name = gensym("fn");
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
   snprintf(code, INITIAL_FUNCTION_SIZE,
-           "/* compile application - start */\n"
+           "/* application - start */\n"
            "MalType *%1$s = env_get(closure_env, make_symbol(\"%2$s\"));\n"
            "if (is_error(%1$s)) { return %1$s; }\n"
            "List *%3$s = NULL;\n"
@@ -342,7 +339,7 @@ MalType *compile_application(MalType *expr, Env *env, int ret)
            "result = EVAL(c->definition, e);\n"
            "} else {\n"
            "return make_error(\"not a callable procedure\");}\n"
-           "/* compile application - end */\n",
+           "/* application - end */\n",
            fn_name, fn->value.mal_symbol, list_name, defs);
 
   return make_string(code);
@@ -401,9 +398,39 @@ MalType *compile_if(MalType *expr, Env *env)
 
 MalType *compile_do(MalType *expr, Env *env)
 {
-  /* TODO: create a block and compile expressions
-     sequentially returning the last value */
-  return make_error("Compiler: 'do' not implemented");
+  List *lst = expr->value.mal_list;
+
+  /* advance to the first expression */
+  if (lst->next) { lst = lst->next; }
+
+  /* compile the expressions */
+  List *exp_lst = NULL;
+  while (lst) {
+    MalType *exp_n = compile_expression(lst->data, env, 1);
+    exp_lst = list_cons(exp_lst, exp_n);
+    lst = lst->next;
+  }
+  exp_lst = list_reverse(exp_lst);
+
+  /* sequence the compiled expressions */
+  char *exp_i = GC_MALLOC(sizeof(*exp_i) * INITIAL_FUNCTION_SIZE);
+  char *exps = GC_MALLOC(sizeof(*exps) * INITIAL_FUNCTION_SIZE);
+
+  while (exp_lst) {
+    MalType *exp = exp_lst->data;
+    snprintf(exp_i, INITIAL_FUNCTION_SIZE, "%s", exp->value.mal_string);
+    strcat(exps, exp_i);
+    exp_lst = exp_lst->next;
+  }
+
+  char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
+  snprintf(code, INITIAL_FUNCTION_SIZE,
+           "/* do - start */\n"
+           "%s"
+           "/* do - end */\n",
+           exps);
+
+    return make_string(code);
 }
 
 MalType *compile_symbol(MalType *expr, Env *env, int ret)
@@ -484,13 +511,13 @@ MalType *compile_string(MalType *expr, Env *env, int ret)
   if (ret) {
     /* assigns the string to the variable 'result' */
     snprintf(code, INITIAL_FUNCTION_SIZE,
-             "result = make_string(%s);\n",
+             "result = make_string(\"%s\");\n",
              expr->value.mal_string);
 
   } else {
     /* returns the string */
     snprintf(code, INITIAL_FUNCTION_SIZE,
-             "make_string(%s)",
+             "make_string(\"%s\")",
              expr->value.mal_string);
   }
   return make_string(code);
