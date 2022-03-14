@@ -46,6 +46,8 @@ MalType *compile_integer(MalType *expr, Env *env, int ret);
 MalType *compile_string(MalType *expr, Env *env, int ret);
 MalType *compile_symbol(MalType *expr, Env *env, int ret);
 
+MalType *EVAL(MalType *ast, Env *env);
+
 /* the global environment */
 extern Env *global_env;
 
@@ -134,6 +136,7 @@ MalType *compile(MalType *fn)
   tcc_add_symbol(s, "is_true", is_true);
   tcc_add_symbol(s, "is_false", is_false);
   tcc_add_symbol(s, "is_function", is_function);
+  tcc_add_symbol(s, "is_closure", is_closure);
   tcc_add_symbol(s, "is_error", is_error);
   //  tcc_add_symbol(s, "is_", is_);
 
@@ -156,6 +159,7 @@ MalType *compile(MalType *fn)
 
   //tcc_add_symbol(s, "get_global_env", get_global_env);
   tcc_add_symbol(s, "get_env", get_env);
+  tcc_add_symbol(s, "EVAL", EVAL);
 
   //  tcc_add_symbol(s, "mal_", mal_);
 
@@ -206,18 +210,19 @@ MalType *compile_closure(MalClosure *closure)
            "#include \"types.h\"\n"
            "#include \"env.h\"\n"
            "#include \"core.h\"\n"
+           "MalType *EVAL(MalType *ast, Env *env);\n"
            "Env *get_env(char* name);\n"
            "\n"
            "MalType *closure_func(List *args) {\n"
            "MalType *result;\n"
-           "Env *env = get_env(\"%s\");\n"
+           "Env *env = get_env(\"%1$s\");\n"
            "MalType *params = env_get(env, make_symbol(\"params\"));\n"
            "int param_count = list_count(params->value.mal_list);\n"
            "if (list_count(args) != param_count) {\n"
            "return make_error_fmt(\"Error: expected \%%i argument\%%s\","
            "param_count, (param_count == 1) ? \"\" : \"s\");}\n"
            "Env *closure_env = env_make(env, params->value.mal_list, args, NULL);\n"
-           "%s"
+           "%2$s"
            "return result;\n}\n",
            name, prog->value.mal_string);
 
@@ -312,9 +317,9 @@ MalType *compile_application(MalType *expr, Env *env, int ret)
   while (comp_lst) {
     MalType *arg = comp_lst->data;
         snprintf(def_i, INITIAL_FUNCTION_SIZE,
-             "%s"
-             "%s = list_cons(%s, result);\n",
-             arg->value.mal_string, list_name, list_name);
+             "%1$s"
+             "%2$s = list_cons(%2$s, result);\n",
+             arg->value.mal_string, list_name);
     strcat(defs, def_i);
     comp_lst = comp_lst->next;
   }
@@ -323,16 +328,22 @@ MalType *compile_application(MalType *expr, Env *env, int ret)
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
   snprintf(code, INITIAL_FUNCTION_SIZE,
            "/* compile application - start */\n"
-           "MalType *%s = env_get(closure_env, make_symbol(\"%s\"));\n"
-           "if (is_error(%s)) { return %s; }\n"
-           "/* arg definitions - start */\n"
-           "List *%s = NULL;\n"
-           "%s"
-           "%s = list_reverse(%s);\n"
-           "/* arg definitions - end */\n"
-           "result = (%s->value.mal_function)(%s);\n",
-           fn_name, fn->value.mal_symbol, fn_name, fn_name,
-           list_name, defs, list_name, list_name, fn_name, list_name);
+           "MalType *%1$s = env_get(closure_env, make_symbol(\"%2$s\"));\n"
+           "if (is_error(%1$s)) { return %1$s; }\n"
+           "List *%3$s = NULL;\n"
+           "%4$s"
+           "%3$s = list_reverse(%3$s);\n"
+           "if (is_function(%1$s)) {\n"
+           "result = (%1$s->value.mal_function)(%3$s);\n"
+           "} else if (is_closure(%1$s)) {\n"
+           "MalClosure *c = %1$s->value.mal_closure;\n"
+           "List *p = (c->parameters)->value.mal_list;\n"
+           "Env *e = env_make(c->env, p, %3$s, c->more_symbol);\n"
+           "result = EVAL(c->definition, e);\n"
+           "} else {\n"
+           "return make_error(\"not a callable procedure\");}\n"
+           "/* compile application - end */\n",
+           fn_name, fn->value.mal_symbol, list_name, defs);
 
   return make_string(code);
 }
@@ -369,16 +380,16 @@ MalType *compile_if(MalType *expr, Env *env)
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
   snprintf(code, INITIAL_FUNCTION_SIZE,
            "/* if condition - start */\n"
-           "%s"
+           "%1$s"
            "MalType *cond = result;\n"
            "/* if condition - end */\n"
            "    if (!is_false(cond) && !is_nil(cond)) {\n"
            "/* if true branch - start */\n"
-           "       %s;\n"
+           "       %2$s;\n"
            "/* if true branch - end */\n"
            "/* if false branch - start */\n"
            "    } else {\n"
-           "       %s;\n"
+           "       %3$s;\n"
            "/* if false branch - end */\n"
            "    }\n",
            condition->value.mal_string,
