@@ -7,7 +7,9 @@
 #include "compiler.h"
 
 #define INITIAL_FUNCTION_SIZE 8192
-#define GENSYM_SIZE 16
+#define DEFAULT_GENSYM_PREFIX "G"
+#define GENSYM_SIZE 32
+
 #define STRINGIFY(...) #__VA_ARGS__
 
 /* TODO: put these in a shared header file */
@@ -31,26 +33,28 @@
 
 
 MalType *compile_closure(MalClosure *closure);
-MalType *compile_expression(MalType *expr, Env *env, int ret);
+MalType *compile_expression(MalType *expr, Env *env);
 
 MalType *compile_defbang(MalType *expr, Env *env);
 MalType *compile_letstar(MalType *expr, Env *env);
 MalType *compile_if(MalType *expr, Env *env);
 MalType *compile_do(MalType *expr, Env *env);
-MalType *compile_application(MalType *expr, Env *env, int ret);
+MalType *compile_application(MalType *expr, Env *env);
 
-MalType *compile_nil(MalType *expr, Env *env, int ret);
-MalType *compile_true(MalType *expr, Env *env, int ret);
-MalType *compile_false(MalType *expr, Env *env, int ret);
-MalType *compile_integer(MalType *expr, Env *env, int ret);
-MalType *compile_string(MalType *expr, Env *env, int ret);
-MalType *compile_symbol(MalType *expr, Env *env, int ret);
+MalType *compile_nil(MalType *expr, Env *env);
+MalType *compile_true(MalType *expr, Env *env);
+MalType *compile_false(MalType *expr, Env *env);
+MalType *compile_integer(MalType *expr, Env *env);
+MalType *compile_string(MalType *expr, Env *env);
+MalType *compile_symbol(MalType *expr, Env *env);
 
 MalType *EVAL(MalType *ast, Env *env);
 
 /* the global environment */
 extern Env *global_env;
 
+/* tcclib cannot access the global_env variable
+   so need a function to access it */
 Env *get_global_env()
 {
   return global_env;
@@ -60,13 +64,11 @@ Env *get_global_env()
 char *gensym(char *prefix)
 {
   static int i = 0;
-  char *result = GC_MALLOC(sizeof(*result) * GENSYM_SIZE);
+  if (!prefix) { prefix = DEFAULT_GENSYM_PREFIX; }
 
-  if (prefix) {
-    snprintf(result, GENSYM_SIZE, "%s_%i", prefix, i++);
-  } else {
-    snprintf(result, GENSYM_SIZE, "G_%i", i++);
-  }
+  char *result = GC_MALLOC(sizeof(*result) * GENSYM_SIZE);
+  snprintf(result, GENSYM_SIZE, "%s_%i", prefix, i++);
+
   return result;
 }
 
@@ -157,8 +159,9 @@ MalType *compile(MalType *fn)
   tcc_add_symbol(s, "list_reverse", list_reverse);
   tcc_add_symbol(s, "list_count", list_count);
 
-  //tcc_add_symbol(s, "get_global_env", get_global_env);
   tcc_add_symbol(s, "get_env", get_env);
+  tcc_add_symbol(s, "save_env", save_env);
+
   tcc_add_symbol(s, "EVAL", EVAL);
 
   //  tcc_add_symbol(s, "mal_", mal_);
@@ -193,11 +196,11 @@ MalType *compile(MalType *fn)
 
 MalType *compile_closure(MalClosure *closure)
 {
-  MalType *prog = compile_expression(closure->definition, closure->env, 1);
+  MalType *prog = compile_expression(closure->definition, closure->env);
   if (is_error(prog)) { return prog; }
 
   /* create a new environment holding the parameter list */
-  Env *env = env_new(closure->env);
+  Env *env = env_make(closure->env, NULL, NULL, NULL);
   env = env_set(env, make_symbol("params"), closure->parameters);
 
   /* stash the environment where the compiled function can get it */
@@ -229,7 +232,7 @@ MalType *compile_closure(MalClosure *closure)
   return make_string(code);
 }
 
-MalType *compile_expression(MalType *expr, Env *env, int ret)
+MalType *compile_expression(MalType *expr, Env *env)
 {
   MalType *buffer;
 
@@ -258,30 +261,30 @@ MalType *compile_expression(MalType *expr, Env *env, int ret)
         buffer = compile_do(expr, env);
       }
       else {
-        buffer = compile_application(expr, env, 0);
+        buffer = compile_application(expr, env);
       }
     }
   }
   else if (is_nil(expr)) {
-      buffer = compile_nil(expr, env, ret);
+      buffer = compile_nil(expr, env);
   }
   else if (is_true(expr)) {
-      buffer = compile_true(expr, env, ret);
+      buffer = compile_true(expr, env);
   }
   else if (is_false(expr)) {
-      buffer = compile_false(expr, env, ret);
+      buffer = compile_false(expr, env);
   }
   else if (is_integer(expr)) {
 
-    buffer = compile_integer(expr, env, ret);
+    buffer = compile_integer(expr, env);
   }
   else if (is_string(expr)) {
 
-    buffer = compile_string(expr, env, ret);
+    buffer = compile_string(expr, env);
     }
   else if (is_symbol(expr)) {
 
-    buffer = compile_symbol(expr, env, ret);
+    buffer = compile_symbol(expr, env);
   }
   else {
     return make_error("Compiler error: Unknown atom");
@@ -289,11 +292,11 @@ MalType *compile_expression(MalType *expr, Env *env, int ret)
   return buffer;
 }
 
-List *compile_list(List *lst, Env *env, int ret) {
+List *compile_list(List *lst, Env *env) {
 
   List *compiled_lst = NULL;
   while (lst) {
-    MalType *expr = compile_expression(lst->data, env, 1);
+    MalType *expr = compile_expression(lst->data, env);
     compiled_lst = list_cons(compiled_lst, expr);
     lst = lst->next;
   }
@@ -305,7 +308,7 @@ MalType *compile_defbang(MalType *expr, Env *env)
   return make_error("Compiler: 'def!' not implemented");
 }
 
-MalType *compile_application(MalType *expr, Env *env, int ret)
+MalType *compile_application(MalType *expr, Env *env)
 {
   List *lst = expr->value.mal_list;
   MalType *fn = lst->data;
@@ -314,7 +317,7 @@ MalType *compile_application(MalType *expr, Env *env, int ret)
   if (lst->next) { lst = lst->next; }
 
   /* compile the list of arguments */
-  List *comp_lst = compile_list(lst, env, 1);
+  List *comp_lst = compile_list(lst, env);
 
   /* create definitions for the arguments */
   char *def_i = GC_MALLOC(sizeof(*def_i) * INITIAL_FUNCTION_SIZE);
@@ -363,7 +366,7 @@ MalType *compile_do(MalType *expr, Env *env)
   if (lst->next) { lst = lst->next; }
 
   /* compile the expressions */
-  List *exp_lst = compile_list(lst, env, 1);
+  List *exp_lst = compile_list(lst, env);
 
   /* sequence the compiled expressions */
   char *exp_i = GC_MALLOC(sizeof(*exp_i) * INITIAL_FUNCTION_SIZE);
@@ -396,17 +399,17 @@ MalType *compile_if(MalType *expr, Env *env)
   List *lst = expr->value.mal_list;
 
   /* compile the condition expression */
-  MalType *condition = compile_expression(lst->next->data, env, 1);
+  MalType *condition = compile_expression(lst->next->data, env);
   if (is_error(condition)) { return condition; }
 
   /* compile the 'true' branch */
-  MalType *true_branch = compile_expression(lst->next->next->data, env, 1);
+  MalType *true_branch = compile_expression(lst->next->next->data, env);
   if (is_error(true_branch)) { return true_branch; }
 
   /* compile the (optional) 'false' branch */
   MalType *false_branch = NULL;
   if (lst->next->next->next) {
-    false_branch = compile_expression(lst->next->next->next->data, env, 1);
+    false_branch = compile_expression(lst->next->next->next->data, env);
     if (is_error(false_branch)) { return false_branch; }
   }
 
@@ -434,92 +437,58 @@ MalType *compile_if(MalType *expr, Env *env)
 
 /* compilation primitives */
 
-MalType *compile_symbol(MalType *expr, Env *env, int ret)
+MalType *compile_symbol(MalType *expr, Env *env)
 {
   /* get the value from the environment */
   char *sym = expr->value.mal_symbol;
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
 
-  if (ret) {
-    /* assigns the symbol value to variable 'result' */
-    snprintf(code, INITIAL_FUNCTION_SIZE,
-             "result = env_get(closure_env, make_symbol(\"%s\"));\n", sym);
-  } else {
-    /* returns the symbol value */
-    snprintf(code, INITIAL_FUNCTION_SIZE,
-             "env_get(closure_env, make_symbol(\"%s\"))", sym);
-  }
+  /* assigns the symbol value to variable 'result' */
+  snprintf(code, INITIAL_FUNCTION_SIZE,
+           "result = env_get(closure_env, make_symbol(\"%s\"));\n", sym);
+
   return make_string(code);
 }
 
-MalType *compile_nil(MalType *expr, Env *env, int ret)
+MalType *compile_nil(MalType *expr, Env *env)
 {
-  if (ret) {
-    /* assigns 'nil' to the variable 'result' */
-    return make_string("result = make_nil();");
-
-  } else {
-    /* returns 'nil' */
-    return make_string("make_nil()");
-  }
+  /* assigns 'nil' to the variable 'result' */
+  return make_string("result = make_nil();");
 }
 
-MalType *compile_true(MalType *expr, Env *env, int ret)
+MalType *compile_true(MalType *expr, Env *env)
 {
-  if (ret) {
-    /* assigns 'trure' to the variable 'result' */
-    return make_string("result = make_true();");
-
-  } else {
-    /* returns 'true' */
-    return make_string("make_true()");
-  }
+  /* assigns 'trure' to the variable 'result' */
+  return make_string("result = make_true();");
 }
 
-MalType *compile_false(MalType *expr, Env *env, int ret)
+MalType *compile_false(MalType *expr, Env *env)
 {
-  if (ret) {
-    /* assigns 'false' to the variable 'result' */
-    return make_string("result = make_false();");
-
-  } else {
-    /* returns 'false' */
-    return make_string("make_false()");
-  }
+  /* assigns 'false' to the variable 'result' */
+  return make_string("result = make_false();");
 }
 
-MalType *compile_integer(MalType *expr, Env *env, int ret)
+MalType *compile_integer(MalType *expr, Env *env)
 {
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
-  if (ret) {
-    /* assigns the integer to the variable 'result' */
-    snprintf(code, INITIAL_FUNCTION_SIZE,
-             "result = make_integer(%li);\n",
-             expr->value.mal_integer);
-  } else {
-    /* returns the integer */
-    snprintf(code, INITIAL_FUNCTION_SIZE,
-             "make_integer(%li)",
-             expr->value.mal_integer);
-  }
+
+  /* assigns the integer to the variable 'result' */
+  snprintf(code, INITIAL_FUNCTION_SIZE,
+           "result = make_integer(%li);\n",
+           expr->value.mal_integer);
+
   return make_string(code);
 }
 
-MalType *compile_string(MalType *expr, Env *env, int ret)
+MalType *compile_string(MalType *expr, Env *env)
 {
   /* assigns the string to the variable 'result' */
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
-  if (ret) {
-    /* assigns the string to the variable 'result' */
-    snprintf(code, INITIAL_FUNCTION_SIZE,
-             "result = make_string(\"%s\");\n",
-             expr->value.mal_string);
 
-  } else {
-    /* returns the string */
-    snprintf(code, INITIAL_FUNCTION_SIZE,
-             "make_string(\"%s\")",
-             expr->value.mal_string);
-  }
+  /* assigns the string to the variable 'result' */
+  snprintf(code, INITIAL_FUNCTION_SIZE,
+           "result = make_string(\"%s\");\n",
+           expr->value.mal_string);
+
   return make_string(code);
 }
