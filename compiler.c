@@ -49,8 +49,6 @@ MalType *compile_integer(MalType *expr);
 MalType *compile_string(MalType *expr);
 MalType *compile_symbol(MalType *expr);
 
-MalType *EVAL(MalType *ast);
-
 /* the global environment */
 extern Env *global_env;
 
@@ -200,20 +198,12 @@ MalType *compile_closure(MalClosure *closure)
   /* generate the C code for the closure */
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
   snprintf(code, INITIAL_FUNCTION_SIZE,
-           "#include <stddef.h>\n"
-           "#include \"types.h\"\n"
-           "#include \"env.h\"\n"
-           "#include \"core.h\"\n"
-           "MalType *EVAL(MalType *ast, Env *env);\n"
-           "Env *get_global_env(void);\n"
-           "List *push_env(List *stack, Env *env);\n"
-           "List *pop_env(List *stack);\n"
-           "Env *peek_env(List *stack);\n"
+           "#include \"compiler.h\""
            "MalType *closure_func(List *args) {\n"
-           "MalType *result;\n"
            "Env *global_env = get_global_env();\n"
            "List *params = NULL;\n"
            "List *stack = NULL;\n"
+           "MalType *result = NULL;\n"
            "%1$s"
            "int param_count = list_count(params);\n"
            "if (list_count(args) != param_count) {\n"
