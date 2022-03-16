@@ -9,6 +9,7 @@
 #define INITIAL_FUNCTION_SIZE 8192
 #define DEFAULT_GENSYM_PREFIX "G"
 #define GENSYM_SIZE 32
+#define DEFAULT_ENV_PREFIX "GENV"
 
 #define STRINGIFY(...) #__VA_ARGS__
 
@@ -70,12 +71,6 @@ char *gensym(char *prefix)
   snprintf(result, GENSYM_SIZE, "%s_%i", prefix, i++);
 
   return result;
-}
-
-/* environments are the same if they point to the same one */
-int cmp_envs(void *val1, void *val2)
-{
-  return (val1 == val2);
 }
 
 /* add an environment to a stack */
@@ -186,10 +181,6 @@ MalType *compile_closure(MalClosure *closure)
 {
   MalType *prog = compile_expression(closure->definition);
   if (is_error(prog)) { return prog; }
-
-  /* create a new environment holding the parameter list */
-  //Env *env = env_make(closure->env, NULL, NULL, NULL);
-  //env = env_set(env, make_symbol("params"), closure->parameters);
 
   /* create definitions for the arguments */
   char *param_i = GC_MALLOC(sizeof(*param_i) * INITIAL_FUNCTION_SIZE);
@@ -428,19 +419,20 @@ MalType *compile_if(MalType *expr)
            "/* if true branch - start */\n"
            "       %2$s"
            "/* if true branch - end */\n"
-           "/* if false branch - start */\n"
            "    } else {\n"
+           "/* if false branch - start */\n"
            "       %3$s"
            "/* if false branch - end */\n"
            "    }\n",
            condition->value.mal_string,
            true_branch->value.mal_string,
-           !false_branch ? "result = make_nil();" : false_branch->value.mal_string);
+           !false_branch ? "result = make_nil();\n" : false_branch->value.mal_string);
 
   return make_string(code);
 }
-
-/* compilation primitives */
+/*
+  compile primitive operations
+*/
 
 MalType *compile_symbol(MalType *expr)
 {
@@ -458,19 +450,19 @@ MalType *compile_symbol(MalType *expr)
 MalType *compile_nil(MalType *expr)
 {
   /* assigns 'nil' to the variable 'result' */
-  return make_string("result = make_nil();");
+  return make_string("result = make_nil();\n");
 }
 
 MalType *compile_true(MalType *expr)
 {
   /* assigns 'trure' to the variable 'result' */
-  return make_string("result = make_true();");
+  return make_string("result = make_true();\n");
 }
 
 MalType *compile_false(MalType *expr)
 {
   /* assigns 'false' to the variable 'result' */
-  return make_string("result = make_false();");
+  return make_string("result = make_false();\n");
 }
 
 MalType *compile_integer(MalType *expr)
