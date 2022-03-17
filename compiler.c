@@ -185,12 +185,14 @@ MalType *compile_closure(MalClosure *closure)
   char *params = GC_MALLOC(sizeof(*params) * INITIAL_FUNCTION_SIZE);
 
   List *lst = closure->parameters->value.mal_list;
+
+  char *params_list = gensym("params");
   /* add the parameter list to the compiled closure */
   while (lst) {
     MalType *param = lst->data;
     snprintf(param_i, INITIAL_FUNCTION_SIZE,
-             "params = list_cons(params, make_symbol(\"%s\"));\n",
-             param->value.mal_symbol);
+             "%1$s = list_cons(%1$s, make_symbol(\"%2$s\"));\n",
+             params_list, param->value.mal_symbol);
     strcat(params, param_i);
     lst = lst->next;
   }
@@ -199,21 +201,23 @@ MalType *compile_closure(MalClosure *closure)
   char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
   snprintf(code, INITIAL_FUNCTION_SIZE,
            "#include \"compiler.h\""
-           "MalType *closure_func(List *args) {\n"
+           "MalType *closure_func(List *args)\n"
+           "{\n"
            "Env *global_env = get_global_env();\n"
-           "List *params = NULL;\n"
+           "List *%1$s = NULL;\n"
            "List *stack = NULL;\n"
            "MalType *result = NULL;\n"
-           "%1$s"
-           "int param_count = list_count(params);\n"
+           "%2$s"
+           "int param_count = list_count(%1$s);\n"
            "if (list_count(args) != param_count) {\n"
            "return make_error_fmt(\"Error: expected \%%i argument\%%s\","
            "param_count, (param_count == 1) ? \"\" : \"s\");}\n"
-           "Env *closure_env = env_make(global_env, params, args, NULL);\n"
+           "Env *closure_env = env_make(global_env, %1$s, args, NULL);\n"
            "stack = push_env(stack, closure_env);\n"
-           "%2$s"
-           "return result;\n}\n",
-           params, prog->value.mal_string);
+           "%3$s"
+           "return result;\n"
+           "}\n",
+           params_list, params, prog->value.mal_string);
 
   return make_string(code);
 }
@@ -289,9 +293,94 @@ List *compile_list(List *lst) {
   return list_reverse(compiled_lst);
 }
 
-MalType *compile_defbang(MalType *expr)
+MalType *compile_letstar(MalType *expr)
 {
-  return make_error("Compiler: 'def!' not implemented");
+  List *lst = expr->value.mal_list;
+
+  if (!lst->next) {
+    return make_error("'let*': missing bindings list");
+  }
+
+  MalType *bindings = lst->next->data;
+  MalType *forms = lst->next->next ? lst->next->next->data : make_nil();
+
+  if (!is_sequential(bindings)) {
+    return make_error("'let*': first argument is not list or vector");
+  }
+
+  Iterator *bindings_iter = NULL;
+
+  /* bindings can be a list or vector */
+  if (is_vector(bindings)) {
+
+    if (vector_count(bindings->value.mal_vector) % 2 == 1) {
+      return make_error("'let*': expected an even number of binding pairs");
+    }
+    bindings_iter = vector_iterator_make(bindings->value.mal_vector);
+  }
+  else {
+    if (list_count(bindings->value.mal_list) % 2 == 1) {
+      return make_error("'let*': expected an even number of binding pairs");
+    }
+    bindings_iter = list_iterator_make(bindings->value.mal_list);
+  }
+
+  //  Env *letstar_env = env_make(*env, NULL, NULL, NULL);
+
+  char *syms_list = gensym("syms_list");
+  char *binds_list = gensym("binds_list");
+
+  /* create definitions for the bindings and arguments */
+  char *sym_i = GC_MALLOC(sizeof(*sym_i) * INITIAL_FUNCTION_SIZE);
+  char *syms = GC_MALLOC(sizeof(*syms) * INITIAL_FUNCTION_SIZE);
+
+  char *bind_i = GC_MALLOC(sizeof(*bind_i) * INITIAL_FUNCTION_SIZE);
+  char *binds = GC_MALLOC(sizeof(*binds) * INITIAL_FUNCTION_SIZE);
+
+  /* evaluate the bindings */
+  while (bindings_iter) {
+
+    MalType *symbol = bindings_iter->value;
+
+    bindings_iter = iterator_next(bindings_iter);
+    MalType *value = compile_expression(bindings_iter->value);
+
+    /* early return from error */
+    if (is_error(value)) { return value; }
+
+    /* symbols */
+    snprintf(sym_i, INITIAL_FUNCTION_SIZE,
+             "%1$s = list_cons(%1$s, make_symbol(\"%2$s\"));\n",
+             syms_list, symbol->value.mal_symbol);
+    strcat(syms, sym_i);
+
+    /* bindings */
+    snprintf(bind_i, INITIAL_FUNCTION_SIZE,
+             "%2$s"
+             "%1$s = list_cons(%1$s, result);\n",
+             binds_list, value->value.mal_string);
+    strcat(binds, bind_i);
+
+    bindings_iter = iterator_next(bindings_iter);
+  }
+
+  MalType *compiled_forms = compile_expression(forms);
+
+  char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
+  snprintf(code, INITIAL_FUNCTION_SIZE,
+           "/* letstar - start */\n"
+           "List *%1$s = NULL;\n"
+           "List *%2$s = NULL;\n"
+           "%3$s"
+           "%4$s"
+           "Env *let_env = env_make(peek_env(stack), %1$s, %2$s, NULL);\n"
+           "stack = push_env(stack, let_env);\n"
+           "%5$s"
+           "pop_env(stack);\n"
+           "/* letstar - end */\n",
+           syms_list, binds_list, syms, binds, compiled_forms->value.mal_string);
+
+  return make_string(code);
 }
 
 MalType *compile_application(MalType *expr)
@@ -300,7 +389,7 @@ MalType *compile_application(MalType *expr)
   MalType *fn = lst->data;
 
   /* advance to the first argument */
-  if (lst->next) { lst = lst->next; }
+  lst = lst->next;
 
   /* compile the list of arguments */
   List *comp_lst = compile_list(lst);
@@ -344,12 +433,17 @@ MalType *compile_application(MalType *expr)
   return make_string(code);
 }
 
+MalType *compile_defbang(MalType *expr)
+{
+  return make_error("Compiler: 'def!' not implemented");
+}
+
 MalType *compile_do(MalType *expr)
 {
   List *lst = expr->value.mal_list;
 
   /* advance to the first expression */
-  if (lst->next) { lst = lst->next; }
+  lst = lst->next;
 
   /* compile the expressions */
   List *exp_lst = compile_list(lst);
@@ -373,11 +467,6 @@ MalType *compile_do(MalType *expr)
            exps);
 
     return make_string(code);
-}
-
-MalType *compile_letstar(MalType *expr)
-{
-  return make_error("Compiler: 'let*' not implemented");
 }
 
 MalType *compile_if(MalType *expr)

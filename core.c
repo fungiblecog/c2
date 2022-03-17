@@ -130,6 +130,8 @@ MalType *mal_add(List *args) {
   while (args) {
 
     MalType *val = args->data;
+    if (is_error(val)) { return val; }
+
     if (!is_number(val)) {
       return make_error("'+': expected numerical arguments");
     }
