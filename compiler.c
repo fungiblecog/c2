@@ -28,10 +28,6 @@
 #define SYMBOL_MACROEXPAND "macroexpand"
 #define SYMBOL_TRYSTAR "try*"
 #define SYMBOL_CATCHSTAR "catch*"
-#define SYMBOL_VEC "vec"
-#define SYMBOL_CONCAT "concat"
-#define SYMBOL_CONS "cons"
-
 
 MalType *compile_closure(MalClosure *closure);
 MalType *compile_expression(MalType *expr);
@@ -48,6 +44,18 @@ MalType *compile_false(MalType *expr);
 MalType *compile_integer(MalType *expr);
 MalType *compile_string(MalType *expr);
 MalType *compile_symbol(MalType *expr);
+MalType *compile_keyword(MalType *expr);
+
+//MalType *compile_fnstar(MalType *expr);
+//MalType *compile_quote(MalType *expr);
+//MalType *compile_quasiquote(MalType *expr);  - macroexpand away?
+//MalType *compile_quasiquoteexpand(MalType *expr);  - macroexpand away?
+//MalType *compile_unquote(MalType *expr);
+//MalType *compile_splice_unquote(MalType *expr);
+//MalType *compile_trystar(MalType *expr);
+//MalType *compile_defmacrobang(MalType *expr); -  macroexpand away?
+
+
 
 /* the global environment */
 extern Env *global_env;
@@ -132,6 +140,7 @@ MalType *compile(MalType *fn)
   tcc_add_symbol(s, "make_integer", make_integer);
   tcc_add_symbol(s, "make_string", make_string);
   tcc_add_symbol(s, "make_symbol", make_symbol);
+  tcc_add_symbol(s, "make_keyword", make_keyword);
   tcc_add_symbol(s, "make_list", make_list);
   tcc_add_symbol(s, "make_error", make_error);
   tcc_add_symbol(s, "make_error_fmt", make_error_fmt);
@@ -275,6 +284,10 @@ MalType *compile_expression(MalType *expr)
   else if (is_symbol(expr)) {
 
     buffer = compile_symbol(expr);
+  }
+  else if (is_keyword(expr)) {
+
+    buffer = compile_keyword(expr);
   }
   else {
     return make_error("Compiler error: Unknown atom");
@@ -565,6 +578,19 @@ MalType *compile_string(MalType *expr)
   snprintf(code, INITIAL_FUNCTION_SIZE,
            "result = make_string(\"%s\");\n",
            expr->value.mal_string);
+
+  return make_string(code);
+}
+
+MalType *compile_keyword(MalType *expr)
+{
+  /* assigns the keyword to the variable 'result' */
+  char *code = GC_MALLOC(sizeof(*code) * INITIAL_FUNCTION_SIZE);
+
+  /* assigns the string to the variable 'result' */
+  snprintf(code, INITIAL_FUNCTION_SIZE,
+           "result = make_keyword(\"%s\");\n",
+           expr->value.mal_keyword);
 
   return make_string(code);
 }
