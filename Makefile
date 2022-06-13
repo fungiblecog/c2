@@ -2,7 +2,7 @@ CC = gcc
 
 CFLAGS = -std=c99 -g -Wall
 
-LIBS = -ledit -lgc -ltcc
+LIBS = -ledit -lgc -ltcc -lpthread
 FFI_LIBS = -ldl -lffi
 
 SRC = reader.c printer.c types.c env.c core.c compiler.c

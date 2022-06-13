@@ -53,7 +53,7 @@ MalType *compile_keyword(MalType *expr);
 //MalType *compile_unquote(MalType *expr);
 //MalType *compile_splice_unquote(MalType *expr);
 //MalType *compile_trystar(MalType *expr);
-//MalType *compile_defmacrobang(MalType *expr); -  macroexpand away?
+//MalType *compile_defmacrobang(MalType *expr);
 
 
 
@@ -448,8 +448,29 @@ MalType *compile_application(MalType *expr)
 
 MalType *compile_defbang(MalType *expr)
 {
-  return make_error("Compiler: 'def!' not implemented");
+  List *lst = expr->value.mal_list;
+
+  /* advance to the first expression */
+  lst = lst->next;
+
+
+  if (!lst || !lst->next || lst->next->next) {
+    return make_error_fmt("'def!': expected exactly two arguments");
+  }
+
+
+  MalType *defbang_symbol = lst->data;
+
+  if (!is_symbol(defbang_symbol)) {
+    return make_error_fmt("'def!': expected symbol for first argument");
+  }
+
+  MalType *defbang_value = lst->next->data;
+  MalType *result = compile_expression(defbang_value);
+
+  return result;
 }
+
 
 MalType *compile_do(MalType *expr)
 {
