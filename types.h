@@ -1,9 +1,9 @@
 #ifndef _MAL_TYPES_H
 #define _MAL_TYPES_H
 
-#include "libs/list/src/list.h"
-#include "libs/hashmap/src/hashmap.h"
-#include "libs/vector/src/vector.h"
+#include "persistent/list/src/list.h"
+#include "persistent/hashmap/src/hashmap.h"
+#include "persistent/vector/src/vector.h"
 
 #define MALTYPE_SYMBOL 1
 #define MALTYPE_KEYWORD 2

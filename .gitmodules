@@ -1,3 +1,6 @@
 [submodule "libs"]
 	path = libs
 	url = git@github.com:fungiblecog/persistent.git
+[submodule "persistent"]
+	path = persistent
+	url = git@github.com:fungiblecog/persistent.git

@@ -1,7 +1,7 @@
 #ifndef _MAL_ENV_H
 #define _MAL_ENV_H
 
-#include "libs/hashmap/src/hashmap.h"
+#include "persistent/hashmap/src/hashmap.h"
 #include "types.h"
 
 typedef MalType *(*mal_fn)(List *);
