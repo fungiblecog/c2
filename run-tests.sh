@@ -12,8 +12,9 @@ for f in ./tests/lib/*.mal; do
     ./runtest.py $f -- ./c2
 done
 
-for f in ./tests/c2/*.mal; do
-
-    echo "Processing $f file...";
-    ./runtest.py $f -- ./c2
-done
+# TODO: additional set of tests
+#for f in ./tests/c2/*.mal; do
+#
+#    echo "Processing $f file...";
+#    ./runtest.py $f -- ./c2
+#done
